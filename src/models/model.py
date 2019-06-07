@@ -209,7 +209,7 @@ class BetaVAE_paper(nn.Module):
 
 class Spatial_Decoder(nn.Module):
     """Spatial broadcast decoder proposed in https://arxiv.org/abs/1901.07017v1"""
-    def __init__(self, z_dim = 10, nc = 1, input_h = 64, input_w = 64, filter_num = 64):
+    def __init__(self, z_dim = 16, nc = 3, input_h = 128, input_w = 128, filter_num = 32):
         super(Spatial_Decoder, self).__init__()
         self.nc = nc
         self.input_h = input_h
@@ -221,27 +221,31 @@ class Spatial_Decoder(nn.Module):
         # First experiment used VAE encoder architecture outlined in
         # factor VAE section in the paper
         self.encoder = nn.Sequential(
-            nn.Conv2d(self.nc, self.filter_num, 4, 2, 1),
+            nn.Conv2d(self.nc+1, self.filter_num, 3, 2, 1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(self.filter_num, self.filter_num, 4, 2, 1),
+            nn.Conv2d(self.filter_num, self.filter_num, 3, 2, 1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(self.filter_num, self.filter_num, 4, 2, 1),
+            nn.Conv2d(self.filter_num, self.filter_num*2, 3, 2, 1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(self.filter_num, self.filter_num, 4, 2, 1),
+            nn.Conv2d(self.filter_num*2, self.filter_num*2, 3, 2, 1),
             nn.ReLU(inplace=True),
-            View((-1, 64*4*4)),
-            nn.Linear(64*4*4, 256),
+            View((-1, 64*8*8)),
+            nn.Linear(64*8*8, 256),
             nn.ReLU(inplace=True),
             nn.Linear(256, self.z_dim*2)
         )
         
         # Decoder
         self.decoder = nn.Sequential(
-            nn.Conv2d(self.z_dim+2, 64, 4, 1),
+            nn.Conv2d(self.z_dim+2, 32, 3, 1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(64, 64, 4, 1),
+            nn.Conv2d(32, 32, 3, 1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(64, self.nc, 4, 1),
+            nn.Conv2d(32, 32, 3, 1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 32, 3, 1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 4, 1, 1)
         )
         self.weight_init()
 
@@ -257,9 +261,9 @@ class Spatial_Decoder(nn.Module):
         # Spatial Decoder
         z = z.view(z.shape[0], z.shape[-1], 1, 1)
         # 9 added to compensate for padding and get output of 64
-        z_b = z.repeat(1, 1, self.input_h+9, self.input_w+9)
-        x = torch.linspace(-1, 1, self.input_h+9)
-        y = torch.linspace(-1, 1, self.input_w+9)
+        z_b = z.repeat(1, 1, self.input_h+8, self.input_w+8)
+        x = torch.linspace(-1, 1, self.input_h+8)
+        y = torch.linspace(-1, 1, self.input_w+8)
         x_b, y_b = torch.meshgrid(x, y)
         x_b = x_b.unsqueeze(0)
         y_b = y_b.unsqueeze(0)
