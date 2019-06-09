@@ -114,9 +114,7 @@ class MONet_Solver(object):
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir, exist_ok=True)
 
-        self.net = cuda(MONet(), self.use_cuda)
-        self.optim = optim.Adam(self.net.parameters(), lr=self.lr,
-                                betas=(self.beta1, self.beta2))
+       
         self.dset_dir = args.dset_dir
         self.dataset = args.dataset
         self.batch_size = args.batch_size
@@ -151,7 +149,10 @@ class MONet_Solver(object):
                     #x = torch.cat((x, s_i), 1)
                     #if self.global_iter == 31:
                     #    pdb.set_trace() 
-                    s_i, mask, recon, mu, logvar = self.net(x, s_i)
+                    if k == self.steps - 1:
+                        s_i, mask, recon, mu, logvar = self.net(x, s_i, True)
+                    else:
+                        s_i, mask, recon, mu, logvar = self.net(x, s_i)
                     x_recon, mask_recon = torch.split(recon, (3,1), 1)
                              
                     recon_loss = reconstruction_loss(torch.mul(x, mask), torch.mul(x_recon, mask), self.decoder_dist)
@@ -162,7 +163,7 @@ class MONet_Solver(object):
                     loss = recon_loss + self.beta*total_kld + mask_recon_loss
 
                     self.optim.zero_grad()
-                    loss.backward()
+                    loss.backward(retain_graph=True)
                     self.optim.step()    
 
                     if self.viz_on and self.global_iter%self.gather_step == 0:
@@ -190,8 +191,8 @@ class MONet_Solver(object):
                             self.gather.insert(images=x)
                             self.gather.insert(images=s_i.data)
                             self.gather.insert(images=mask.data)
-                            self.gather.insert(images=F.sigmoid(x_recon))
-                            self.gather.insert(images=F.sigmoid(mask_recon))
+                            self.gather.insert(images=x_recon)
+                            self.gather.insert(images=mask_recon)
 
                             self.viz_reconstruction(k)
                             self.viz_lines()

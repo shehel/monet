@@ -32,7 +32,7 @@ class ClevrDatasetImages(Dataset):
         padded_index = str(idx).rjust(6, '0')
         img_filename = os.path.join(self.img_dir, 'CLEVR_{}_{}.png'.format(self.mode,padded_index))
         image = Image.open(img_filename).convert('RGB')
-
+        image = transforms.functional.crop(image, 64, 29, 192, 192)
         if self.transform:
             image = self.transform(image)
 
@@ -40,7 +40,7 @@ class ClevrDatasetImages(Dataset):
 
 def return_data(clevr_dir, batch_size, num_workers=1):
 
-    train_transforms = transforms.Compose([transforms.Resize((128, 128)),
+    train_transforms = transforms.Compose([transforms.Resize((64, 64)),
                                         #transforms.RandomRotation(2.8),  # .05 rad
                                         transforms.ToTensor()])
     #test_transforms = transforms.Compose([transforms.Resize((128, 128)),

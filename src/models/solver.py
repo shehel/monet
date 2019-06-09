@@ -15,13 +15,13 @@ from torchvision.utils import make_grid, save_image
 
 from models.utils import cuda, grid2gif
 from models.model import BetaVAE_H, BetaVAE_B, Spatial_Decoder, BetaVAE_paper
-from data.dataset import return_data
+from data.clevr_dataset import return_data
 
 
 def reconstruction_loss(x, x_recon, distribution):
+    
     batch_size = x.size(0)
     assert batch_size != 0
-
     if distribution == 'bernoulli':
         recon_loss = F.binary_cross_entropy_with_logits(x_recon, x, size_average=False).div(batch_size)
     elif distribution == 'gaussian':
@@ -87,11 +87,11 @@ class Solver(object):
         self.lr = args.lr
         self.beta1 = args.beta1
         self.beta2 = args.beta2
-
+        self.image_size = args.image_size
         if args.dataset.lower() == 'dsprites':
             self.nc = 1
             self.decoder_dist = 'bernoulli'
-        elif args.dataset.lower() == '3dchairs':
+        elif args.dataset.lower() == 'room':
             self.nc = 3
             self.decoder_dist = 'gaussian'
         elif args.dataset.lower() == 'celeba':
@@ -143,7 +143,7 @@ class Solver(object):
         self.dset_dir = args.dset_dir
         self.dataset = args.dataset
         self.batch_size = args.batch_size
-        self.data_loader = return_data(args)
+        self.data_loader = return_data(self.dset_dir, self.batch_size)
 
         self.gather = DataGather()
 
@@ -414,7 +414,7 @@ class Solver(object):
             output_dir = os.path.join(self.output_dir, str(self.global_iter))
             os.makedirs(output_dir, exist_ok=True)
             gifs = torch.cat(gifs)
-            gifs = gifs.view(len(Z), self.z_dim, len(interpolation), self.nc, 64, 64).transpose(1, 2)
+            gifs = gifs.view(len(Z), self.z_dim, len(interpolation), self.nc, self.image_size, self.image_size).transpose(1, 2)
             for i, key in enumerate(Z.keys()):
                 for j, val in enumerate(interpolation):
                     save_image(tensor=gifs[i][j].cpu(),

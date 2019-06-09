@@ -209,7 +209,7 @@ class BetaVAE_paper(nn.Module):
 
 class Spatial_Decoder(nn.Module):
     """Spatial broadcast decoder proposed in https://arxiv.org/abs/1901.07017v1"""
-    def __init__(self, z_dim = 16, nc = 3, input_h = 128, input_w = 128, filter_num = 32):
+    def __init__(self, z_dim = 16, nc = 4, input_h = 128, input_w = 128, filter_num = 32):
         super(Spatial_Decoder, self).__init__()
         self.nc = nc
         self.input_h = input_h
@@ -221,7 +221,7 @@ class Spatial_Decoder(nn.Module):
         # First experiment used VAE encoder architecture outlined in
         # factor VAE section in the paper
         self.encoder = nn.Sequential(
-            nn.Conv2d(self.nc+1, self.filter_num, 3, 2, 1),
+            nn.Conv2d(self.nc, self.filter_num, 3, 2, 1),
             nn.ReLU(inplace=True),
             nn.Conv2d(self.filter_num, self.filter_num, 3, 2, 1),
             nn.ReLU(inplace=True),
@@ -245,7 +245,7 @@ class Spatial_Decoder(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(32, 32, 3, 1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(32, 4, 1, 1)
+            nn.Conv2d(32, self.nc, 1, 1)
         )
         self.weight_init()
 
@@ -260,7 +260,7 @@ class Spatial_Decoder(nn.Module):
     def _decode(self, z):
         # Spatial Decoder
         z = z.view(z.shape[0], z.shape[-1], 1, 1)
-        # 9 added to compensate for padding and get output of 64
+        # 8 added to compensate for padding and get output of 128
         z_b = z.repeat(1, 1, self.input_h+8, self.input_w+8)
         x = torch.linspace(-1, 1, self.input_h+8)
         y = torch.linspace(-1, 1, self.input_w+8)
