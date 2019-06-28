@@ -40,7 +40,7 @@ class ClevrDatasetImages(Dataset):
 
 def return_data(clevr_dir, batch_size, num_workers=1):
 
-    train_transforms = transforms.Compose([transforms.Resize((64, 64)),
+    train_transforms = transforms.Compose([transforms.Resize((128, 128)),
                                         #transforms.RandomRotation(2.8),  # .05 rad
                                         transforms.ToTensor()])
     #test_transforms = transforms.Compose([transforms.Resize((128, 128)),

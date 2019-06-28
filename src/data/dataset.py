@@ -43,7 +43,7 @@ def return_data(args):
     batch_size = args.batch_size
     num_workers = args.num_workers
     image_size = args.image_size
-    assert image_size == 64, 'currently only image size of 64 is supported'
+    #assert image_size == 64, 'currently only image size of 64 is supported'
 
     if name.lower() == '3dchairs':
         root = os.path.join(dset_dir, '3DChairs')
@@ -53,8 +53,8 @@ def return_data(args):
         train_kwargs = {'root':root, 'transform':transform}
         dset = CustomImageFolder
 
-    elif name.lower() == 'celeba':
-        root = os.path.join(dset_dir, 'CelebA')
+    elif name.lower() == 'room':
+        root = os.path.join(dset_dir)
         transform = transforms.Compose([
             transforms.Resize((image_size, image_size)),
             transforms.ToTensor(),])

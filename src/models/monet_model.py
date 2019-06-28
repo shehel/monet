@@ -17,10 +17,11 @@ class MONet(nn.Module):
 			mask = scope
 		else:
 			inp_attention = torch.cat((x, scope), 1)
-			logits  = self.attention_net(inp_attention)
+			logits  = F.sigmoid(self.attention_net(inp_attention))
+			#loss_mask = torch.round(logits)
 			#pdb.set_trace()
-			mask = scope + F.log_softmax(logits)
-			scope = scope + (1-F.log_softmax(logits))
+			mask = scope + torch.log(logits)
+			scope = scope + torch.log(1-logits)
 		inp_vae = torch.cat((x, mask), 1)
 		x_recon, mu, log_var = self.component_vae(inp_vae)
 		#pdb.set_trace()

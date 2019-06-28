@@ -13,17 +13,25 @@ from models.monet_model import MONet
 import os 
 
 
-def reconstruction_loss(x, x_recon, distribution):
+def reconstruction_loss(x, x_recons, mask, distribution):
+    #pdb.set_trace()
     batch_size = x.size(0)
     assert batch_size != 0
     #_trdb.set_trace()
-    if distribution == 'bernoulli':
-        recon_loss = F.binary_cross_entropy_with_logits(x_recon, x, size_average=False).div(batch_size)
-    elif distribution == 'gaussian':
-        x_recon = F.sigmoid(x_recon)
-        recon_loss = F.mse_loss(x_recon, x, size_average=False).div(batch_size)
-    else:
-        recon_loss = None
+    
+    #pdb.set_trace()
+    #mask = F.normalize(mask)
+    #mask_recon = F.tanh(mask_recon)
+    #mask_recon_loss = F.binary_cross_entropy_with_logits(mask, mask_recon, size_average=False).div(batch_size)
+    #mask_recon_loss = F.mse_loss(mask, mask_recon, size_average=False).div(batch_size)    
+    recon_loss = 0
+    for idx, i in enumerate(x_recons):
+        imgs = F.sigmoid(i)
+        #pdb.set_trace()
+        m = mask[:,idx,:,:]
+        m = torch.reshape(m, (m.shape[0], 1, m.shape[1], m.shape[2]))
+        recon_loss = F.mse_loss(torch.mul(imgs, m), torch.mul(x, m), size_average=False).div(batch_size) + recon_loss
+
 
     return recon_loss
 
@@ -71,7 +79,7 @@ class MONet_Solver(object):
         self.global_iter = 0
 
 
-        self.steps = 11
+        self.steps = 5
         self.z_dim = args.z_dim
         self.beta = args.beta
         self.gamma = args.gamma
@@ -100,8 +108,7 @@ class MONet_Solver(object):
             self.viz = visdom.Visdom(port=self.viz_port)
         
         self.net = cuda(MONet(), self.use_cuda)
-        self.optim = optim.Adam(self.net.parameters(), lr=self.lr,
-                                betas=(self.beta1, self.beta2))
+        self.optim = optim.RMSprop(self.net.parameters(), lr=self.lr)
         self.ckpt_dir = os.path.join(args.ckpt_dir, args.viz_name)
         if not os.path.exists(self.ckpt_dir):
             os.makedirs(self.ckpt_dir, exist_ok=True)
@@ -119,7 +126,7 @@ class MONet_Solver(object):
         self.dataset = args.dataset
         self.batch_size = args.batch_size
         self.data_loader = return_data(self.dset_dir, self.batch_size)
-
+        #self.data_loader = return_data(args)
         self.gather_step = args.gather_step
         self.display_step = args.display_step
         self.save_step = args.save_step
@@ -144,62 +151,84 @@ class MONet_Solver(object):
                 
                 x = Variable(cuda(x, self.use_cuda))
                 s_i = (cuda(torch.zeros(self.batch_size, 1, 128, 128),self.use_cuda))
-
+                loss = 0
+                recons = []
+                kld = 0
                 for k in range(self.steps):
                     #x = torch.cat((x, s_i), 1)
                     #if self.global_iter == 31:
-                    #    pdb.set_trace() 
+                    #pdb.set_trace() 
                     if k == self.steps - 1:
                         s_i, mask, recon, mu, logvar = self.net(x, s_i, True)
                     else:
                         s_i, mask, recon, mu, logvar = self.net(x, s_i)
                     x_recon, mask_recon = torch.split(recon, (3,1), 1)
                              
-                    recon_loss = reconstruction_loss(torch.mul(x, mask), torch.mul(x_recon, mask), self.decoder_dist)
-                    mask_recon_loss = reconstruction_loss(mask, mask_recon, "bernoulli")
-
+                    #recon_loss, mask_recon_loss = reconstruction_loss(x, mask, x_recon,
+                    #                                mask_recon, self.decoder_dist)   
+                    #pdb.set_trace()
+                    #mask_recon = F.logsigmoid(mask_recon)
+                    #mask_recon_loss = F.kl_div(mask_recon, mask, size_average=False).div(4)
+                    
+                    
                     total_kld, dim_wise_kld, mean_kld = kl_divergence(mu, logvar)
-
-                    loss = recon_loss + self.beta*total_kld + mask_recon_loss
-
-                    self.optim.zero_grad()
-                    loss.backward(retain_graph=True)
-                    self.optim.step()    
-
-                    if self.viz_on and self.global_iter%self.gather_step == 0:
-                        self.gather.insert(iter=self.global_iter,
-                                       mu=mu.mean(0).data, var=logvar.exp().mean(0).data,
-                                       recon_loss=recon_loss.data, total_kld=total_kld.data,
-                                       dim_wise_kld=dim_wise_kld.data, mean_kld=mean_kld.data)
-                         
-                    if self.global_iter%self.display_step == 0:
-                        pbar.write('[{}] img recon_loss: {:.3f} mask_recon_loss:{:.3f} total_kld:{:.3f} mean_kld:{:.3f}'.format(
-                            self.global_iter, recon_loss.item(), mask_recon_loss.item(), total_kld.item(), mean_kld.item()))
-
-                        var = logvar.exp().mean(0).data
-                        var_str = ''
-                        for j, var_j in enumerate(var):
-                            var_str += 'var{}:{:.4f} '.format(j+1, var_j)
-                        pbar.write(var_str)
-
-                        if self.objective == 'B' or self.objective == 'S':
-                            pbar.write('C:{:.3f}'.format(C.data[0]))
+                    kld = total_kld+kld
+                    #loss += recon_loss + self.beta*total_kld + 0.5*mask_recon_loss
+                    recons.append(x_recon)
+                    if k>0:
+                        masks = torch.cat((masks, mask), dim=1)
+                        recon_masks = torch.cat((recon_masks, mask_recon), dim = 1)
+                    else:
+                        masks = mask
+                        recon_masks = mask_recon
+                soft_mask = F.softmax(masks, dim = 1)
+                soft_recon = F.softmax(recon_masks, dim = 1)
+                mask_loss = F.mse_loss(soft_mask, soft_recon, size_average=False).div(soft_mask.size(0))
+                recon_loss = reconstruction_loss(x, recons, masks, "gaussian")
+                if self.viz_on and self.global_iter%self.gather_step == 0:
+                    self.gather.insert(iter=self.global_iter,
+                                    mu=mu.mean(0).data, var=logvar.exp().mean(0).data,
+                                    recon_loss=recon_loss.data, total_kld=total_kld.data,
+                                    dim_wise_kld=dim_wise_kld.data, mean_kld=mean_kld.data)
                         
-                        if self.viz_on:
-                            #print (self.global_iter)
-                            #pdb.set_trace()
-                            self.gather.insert(images=x)
-                            self.gather.insert(images=s_i.data)
-                            self.gather.insert(images=mask.data)
-                            self.gather.insert(images=x_recon)
-                            self.gather.insert(images=mask_recon)
+                if self.global_iter%self.display_step == 0:
+                    pbar.write('[{}] img recon_loss: {:.3f} mask_recon_loss:{:.3f} total_kld:{:.3f} mean_kld:{:.3f}'.format(
+                        self.global_iter, recon_loss.item(), mask_loss.item(), total_kld.item(), mean_kld.item()))
 
-                            self.viz_reconstruction(k)
-                            self.viz_lines()
-                            self.gather.flush()
+                    var = logvar.exp().mean(0).data
+                    var_str = ''
+                    for j, var_j in enumerate(var):
+                        var_str += 'var{}:{:.4f} '.format(j+1, var_j)
+                    pbar.write(var_str)
+
+                    if self.objective == 'B' or self.objective == 'S':
+                        pbar.write('C:{:.3f}'.format(C.data[0]))
+                    
+                    if self.viz_on:
+                        #print (self.global_iter)
+                        #pdb.set_trace()
+                        j = masks[:, 0, :, :]
+                        j = j.reshape((j.shape[0], 1, j.shape[1], j.shape[2]))
+                        self.gather.insert(images=x)
+                        self.gather.insert(images=soft_mask[:, 0, :, :])
+                        self.gather.insert(images=soft_mask[:, 1, :, :])
+                        #self.gather.insert(images=F.sigmoid(recons[0]))
+                        self.gather.insert(images=soft_mask[:, 2, :, :])
+                        self.gather.insert(images=soft_mask[:, 3, :, :])
+
+                        #self.gather.insert(images=torch.mul(F.sigmoid(recons[0]), j))
+                        self.viz_reconstruction(k)
+                        self.viz_lines()
+                        self.gather.flush()
 
                    #if self.viz_on or self.save_output:
                    #     self.viz_traverse()
+                #pdb.set_trace()
+                self.optim.zero_grad()
+                #pdb.set_trace()
+                loss += recon_loss + self.beta*kld + 0.5*mask_loss
+                loss.backward()
+                self.optim.step() 
 
                 if self.global_iter%self.save_step == 0:
                    self.save_checkpoint('last')
@@ -220,15 +249,15 @@ class MONet_Solver(object):
         self.net_mode(train=False)
         #pdb.set_trace()
         x = self.gather.data['images'][0][:1]
-        x = make_grid(x, normalize=True)
+        x = make_grid(x, normalize=False)
         scope = self.gather.data['images'][1][:1]
-        scope = make_grid(scope, normalize=True)
+        scope = make_grid(scope, normalize=False)
         mask = self.gather.data['images'][2][:1]
-        mask = make_grid(mask, normalize=True)
+        mask = make_grid(mask, normalize=False)
         x_recon = self.gather.data['images'][3][:1]
-        x_recon = make_grid(x_recon, normalize=True)
+        x_recon = make_grid(x_recon, normalize=False)
         mask_recon = self.gather.data['images'][4][:1]
-        mask_recon = make_grid(mask_recon, normalize=True)
+        mask_recon = make_grid(mask_recon, normalize=False)
         images = torch.stack([x, scope, mask, x_recon, mask_recon], dim=0).cpu()
         self.viz.images(images, env=self.viz_name+'_reconstruction',
                         opts=dict(title=str(self.global_iter)+str(k)), nrow=1)
